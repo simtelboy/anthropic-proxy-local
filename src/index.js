@@ -12,14 +12,31 @@ const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..');
 const envPath = join(projectRoot, '.env');
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
+let rl;
+
+function getRL() {
+  if (!rl) {
+    rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+  }
+  return rl;
+}
 
 function question(prompt) {
   return new Promise((resolve) => {
-    rl.question(prompt, resolve);
+    getRL().question(prompt, resolve);
+  });
+}
+
+function closeRL() {
+  return new Promise((resolve) => {
+    if (rl) {
+      rl.close(() => resolve());
+    } else {
+      resolve();
+    }
   });
 }
 
@@ -124,6 +141,15 @@ ${authToken ? `AUTH_TOKEN=${authToken}` : '# AUTH_TOKEN='}
 
 // 检查并加载配置
 async function checkConfig() {
+  // 如果已启动过（watch 模式重启），直接跳过配置检查
+  // 使用环境变量标记，因为模块重新加载会重置变量
+  if (process.env.PROXY_STARTED === 'true') {
+    console.log('\n🔄 服务重启中...\n');
+    return;
+  }
+
+  process.env.PROXY_STARTED = 'true';
+
   // 先尝试加载 .env
   const { default: dotenv } = await import('dotenv');
   if (existsSync(envPath)) {
@@ -201,12 +227,12 @@ async function startServer() {
   // 验证配置
   if (!validateConfig()) {
     console.error('\n配置验证失败，请重新运行 npm run dev');
-    rl.close();
+    await closeRL();
     process.exit(1);
   }
 
   const host = process.env.PROXY_HOST || '127.0.0.1';
-  const port = parseInt(process.env.PROXY_PORT, 10) || 8080;
+  const port = parseInt(process.env.PROXY_PORT, 10) || 8088;
 
   app.listen(port, host, () => {
     console.log('\n' + '='.repeat(50));
@@ -224,9 +250,9 @@ async function startServer() {
 }
 
 // 处理 Ctrl+C
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n\n正在关闭服务...');
-  rl.close();
+  await closeRL();
   process.exit(0);
 });
 
